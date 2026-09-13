@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { apiErrorMessage, parseJson } from "@/lib/api/client";
 import {
@@ -86,11 +87,19 @@ function ClaimGroup({
   );
 }
 
+function upsertDocument(list: PublicDocument[], next: PublicDocument): PublicDocument[] {
+  const exists = list.some((item) => item.id === next.id);
+  if (!exists) {
+    return [next, ...list];
+  }
+  return list.map((item) => (item.id === next.id ? next : item));
+}
+
 export function CompanionStudio({ email }: { email: string }) {
+  const router = useRouter();
   const [documents, setDocuments] = useState<PublicDocument[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [document, setDocument] = useState<PublicDocument | null>(null);
   const [understanding, setUnderstanding] = useState<PublicUnderstanding | null>(null);
   const [intentOptions, setIntentOptions] = useState<IntentOption[]>([]);
   const [selectedIntent, setSelectedIntent] = useState<IntentOption | null>(null);
@@ -100,30 +109,53 @@ export function CompanionStudio({ email }: { email: string }) {
   const [error, setError] = useState<string | null>(null);
   const [uploadTitle, setUploadTitle] = useState("");
 
-  const loadDocuments = useCallback(async () => {
-    const response = await fetch("/api/documents");
-    const payload = await parseJson<{ documents?: PublicDocument[]; error?: { message: string } }>(
-      response,
-    );
-    if (!response.ok) {
-      throw new Error(apiErrorMessage(payload, "Could not load documents"));
-    }
-    setDocuments(payload.documents ?? []);
+  const document = useMemo(
+    () => documents.find((item) => item.id === selectedId) ?? null,
+    [documents, selectedId],
+  );
+
+  function resetWorkspace() {
+    setUnderstanding(null);
+    setIntentOptions([]);
+    setSelectedIntent(null);
+    setCustomPrompt("");
+    setExplanation(null);
+    setError(null);
+  }
+
+  function selectDocument(id: string) {
+    setSelectedId(id);
+    resetWorkspace();
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/documents")
+      .then(async (response) => {
+        const payload = await parseJson<{ documents?: PublicDocument[]; error?: { message: string } }>(
+          response,
+        );
+        if (cancelled) {
+          return;
+        }
+        if (!response.ok) {
+          setListError(apiErrorMessage(payload, "Could not load documents"));
+          return;
+        }
+        setDocuments(payload.documents ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setListError("Could not load documents");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    loadDocuments().catch((err: unknown) => {
-      setListError(err instanceof Error ? err.message : "Could not load documents");
-    });
-  }, [loadDocuments]);
-
-  useEffect(() => {
     if (!selectedId) {
-      setDocument(null);
-      setUnderstanding(null);
-      setIntentOptions([]);
-      setSelectedIntent(null);
-      setExplanation(null);
       return;
     }
 
@@ -141,8 +173,7 @@ export function CompanionStudio({ email }: { email: string }) {
         setError(apiErrorMessage(payload, "Could not load this document"));
         return;
       }
-      setDocument(payload);
-      setDocuments((current) => current.map((item) => (item.id === payload.id ? payload : item)));
+      setDocuments((current) => upsertDocument(current, payload));
       if (payload.status === "READY" || payload.status === "FAILED") {
         return;
       }
@@ -151,11 +182,6 @@ export function CompanionStudio({ email }: { email: string }) {
       }, 2000);
     }
 
-    setError(null);
-    setUnderstanding(null);
-    setIntentOptions([]);
-    setSelectedIntent(null);
-    setExplanation(null);
     void poll();
 
     return () => {
@@ -166,20 +192,20 @@ export function CompanionStudio({ email }: { email: string }) {
     };
   }, [selectedId]);
 
+  const readyId = document?.status === "READY" ? document.id : null;
+
   useEffect(() => {
-    if (!document || document.status !== "READY") {
+    if (!readyId) {
       return;
     }
 
     let cancelled = false;
-    setBusy("intents");
-    setError(null);
 
     async function loadReady() {
       try {
         const [understandingRes, intentRes] = await Promise.all([
-          fetch(`/api/documents/${document.id}/understanding`),
-          fetch(`/api/documents/${document.id}/intent-options`),
+          fetch(`/api/documents/${readyId}/understanding`),
+          fetch(`/api/documents/${readyId}/intent-options`),
         ]);
         const understandingPayload = await parseJson<
           PublicUnderstanding & { error?: { message: string } }
@@ -199,12 +225,10 @@ export function CompanionStudio({ email }: { email: string }) {
         }
         setUnderstanding(understandingPayload);
         setIntentOptions(intentPayload.options ?? []);
+        setBusy((current) => (current === "intents" ? null : current));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load this material");
-        }
-      } finally {
-        if (!cancelled) {
           setBusy((current) => (current === "intents" ? null : current));
         }
       }
@@ -214,7 +238,7 @@ export function CompanionStudio({ email }: { email: string }) {
     return () => {
       cancelled = true;
     };
-  }, [document]);
+  }, [readyId]);
 
   async function onUpload(file: File) {
     setError(null);
@@ -244,8 +268,7 @@ export function CompanionStudio({ email }: { email: string }) {
         return;
       }
       setUploadTitle("");
-      setSelectedId(payload.id);
-      await loadDocuments();
+      selectDocument(payload.id);
     } catch {
       setError("Upload failed. Try again.");
     } finally {
@@ -301,7 +324,8 @@ export function CompanionStudio({ email }: { email: string }) {
   async function onSignOut() {
     setBusy("signout");
     await fetch("/api/auth/sign-out", { method: "POST" });
-    window.location.href = "/";
+    router.push("/");
+    router.refresh();
   }
 
   const supported = useMemo(
@@ -392,7 +416,7 @@ export function CompanionStudio({ email }: { email: string }) {
                   <li key={item.id}>
                     <button
                       type="button"
-                      onClick={() => setSelectedId(item.id)}
+                      onClick={() => selectDocument(item.id)}
                       className={`w-full rounded-sm border px-3 py-3 text-left text-sm transition ${
                         selectedId === item.id
                           ? "border-gold bg-gold-soft/40"
@@ -415,7 +439,13 @@ export function CompanionStudio({ email }: { email: string }) {
         <main className="min-w-0 space-y-8">
           <ErrorNote message={error} />
 
-          {!document ? (
+          {!document && selectedId ? (
+            <section className="rounded-sm border border-ink/10 bg-paper-3 p-8">
+              <p className="text-sm text-ink-soft">Loading this PDF…</p>
+            </section>
+          ) : null}
+
+          {!document && !selectedId ? (
             <section className="rounded-sm border border-ink/10 bg-paper-3 p-8">
               <h1 className="font-serif text-3xl text-forest">Start with the source</h1>
               <p className="mt-3 max-w-xl text-ink-soft">
@@ -449,17 +479,17 @@ export function CompanionStudio({ email }: { email: string }) {
             </section>
           ) : null}
 
-          {document?.status === "READY" && understanding ? (
+          {document?.status === "READY" ? (
             <section className="space-y-6">
               <div className="rounded-sm border border-ink/10 bg-paper-3 p-8">
                 <p className="text-xs uppercase tracking-[0.22em] text-gold">Understood</p>
                 <h1 className="mt-2 font-serif text-3xl text-forest">
-                  {understanding.inferredTitle ?? document.title}
+                  {understanding?.inferredTitle ?? document.title}
                 </h1>
-                {understanding.overview ? (
+                {understanding?.overview ? (
                   <p className="mt-4 max-w-3xl leading-relaxed text-ink">{understanding.overview}</p>
                 ) : null}
-                {understanding.concepts.length > 0 ? (
+                {understanding && understanding.concepts.length > 0 ? (
                   <div className="mt-6 flex flex-wrap gap-2">
                     {understanding.concepts.slice(0, 8).map((concept) => (
                       <span
@@ -481,7 +511,7 @@ export function CompanionStudio({ email }: { email: string }) {
                 <p className="mt-2 text-sm text-ink-soft">
                   Intents are generated from this document. Choose one, or write a custom request.
                 </p>
-                {busy === "intents" ? (
+                {!understanding && !error ? (
                   <p className="mt-4 text-sm text-ink-soft">Loading intents…</p>
                 ) : (
                   <div className="mt-5 grid gap-3 md:grid-cols-2">
