@@ -32,15 +32,25 @@ export const groundingKindSchema = z.enum([
   "analogy",
 ]);
 
+const pageNumbersSchema = z.array(z.number().int().positive()).min(1);
+
 export const analyzeDocumentResultSchema: z.ZodType<AnalyzeDocumentResult> = z.object({
   schemaVersion: z.string().min(1),
+  overview: z.string().min(1),
+  inferredTitle: z.string().min(1).optional(),
+  topics: z.array(
+    z.object({
+      name: z.string().min(1),
+      pageNumbers: pageNumbersSchema,
+    }),
+  ),
   concepts: z.array(
     z.object({
       name: z.string().min(1),
       kind: conceptKindSchema,
       summary: z.string().min(1),
       importance: z.number().int().min(1).max(5),
-      pageNumbers: z.array(z.number().int().positive()),
+      pageNumbers: pageNumbersSchema,
       sourceExcerpt: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
     }),
@@ -56,7 +66,7 @@ export const analyzeDocumentResultSchema: z.ZodType<AnalyzeDocumentResult> = z.o
   importantSections: z.array(
     z.object({
       heading: z.string().optional(),
-      pageNumber: z.number().int().positive().optional(),
+      pageNumber: z.number().int().positive(),
       excerpt: z.string().min(1),
       whyItMatters: z.string().min(1),
     }),
@@ -91,3 +101,22 @@ export const generateExplanationResultSchema: z.ZodType<GenerateExplanationResul
   ),
   conceptsUsed: z.array(z.string()),
 });
+
+export function parseJsonObject(text: string): unknown {
+  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  return JSON.parse(trimmed) as unknown;
+}
+
+export function parseAnalyzeDocumentResult(
+  value: unknown,
+  schemaVersion: string,
+): AnalyzeDocumentResult {
+  const parsed = analyzeDocumentResultSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error("INVALID_MODEL_OUTPUT");
+  }
+  return {
+    ...parsed.data,
+    schemaVersion,
+  };
+}

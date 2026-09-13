@@ -31,10 +31,22 @@ export type AnalyzeDocumentInput = {
     text: string;
     hasVisual?: boolean;
   }>;
+  source?: {
+    mimeType: "application/pdf";
+    bytes: Uint8Array;
+  };
+};
+
+export type TopicSummary = {
+  name: string;
+  pageNumbers: number[];
 };
 
 export type AnalyzeDocumentResult = {
   schemaVersion: string;
+  overview: string;
+  inferredTitle?: string;
+  topics: TopicSummary[];
   concepts: Array<{
     name: string;
     kind: ConceptKind;
@@ -52,7 +64,7 @@ export type AnalyzeDocumentResult = {
   }>;
   importantSections: Array<{
     heading?: string;
-    pageNumber?: number;
+    pageNumber: number;
     excerpt: string;
     whyItMatters: string;
   }>;

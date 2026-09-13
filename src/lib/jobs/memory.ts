@@ -1,16 +1,15 @@
 import type { Job, JobQueue } from "@/lib/jobs/types";
 import { logger } from "@/lib/logger";
 
-/**
- * In-process FIFO queue. Status for documents must still live in PostgreSQL.
- * Document processing handlers are not wired in Phase 0.
- */
 export class InMemoryJobQueue implements JobQueue {
   private readonly pending: Job[] = [];
   private running = 0;
   private started = false;
 
-  constructor(private readonly concurrency: number) {}
+  constructor(
+    private readonly concurrency: number,
+    private readonly handler: (job: Job) => Promise<void>,
+  ) {}
 
   async enqueue(job: Job): Promise<void> {
     this.pending.push(job);
@@ -42,13 +41,21 @@ export class InMemoryJobQueue implements JobQueue {
   }
 
   private async run(job: Job): Promise<void> {
-    logger.info("job.received", {
-      jobName: job.name,
-      documentId: job.documentId,
-    });
+    try {
+      await this.handler(job);
+    } catch (error) {
+      logger.error("job.unhandled", {
+        jobName: job.name,
+        documentId: job.documentId,
+        name: error instanceof Error ? error.name : "unknown",
+      });
+    }
   }
 }
 
-export function createJobQueue(concurrency: number): JobQueue {
-  return new InMemoryJobQueue(concurrency);
+export function createJobQueue(
+  concurrency: number,
+  handler: (job: Job) => Promise<void>,
+): JobQueue {
+  return new InMemoryJobQueue(concurrency, handler);
 }

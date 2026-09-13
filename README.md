@@ -2,7 +2,7 @@
 
 Premium AI learning companion: upload academic material, wait until the system has a versioned, page-grounded understanding of it, then request a personalized explanation.
 
-This repository is on **Phase 2** (authenticated PDF upload to private Supabase Storage). Gemini, document understanding, and explanations are not implemented yet.
+This repository is on **Phase 3** (Gemini document understanding). Personalized explanations and companion UI are not implemented yet.
 
 Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
@@ -16,7 +16,7 @@ Requirements:
 ```bash
 cp .env.example .env
 # set AUTH_SECRET, DATABASE_URL, DIRECT_URL
-# set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for PDF storage
+# set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and GEMINI_API_KEY
 npm install
 npx prisma migrate dev
 npm run dev
@@ -29,6 +29,13 @@ The app listens on [http://127.0.0.1:43147](http://127.0.0.1:43147).
 - Sign in: `/sign-in` or `POST /api/auth/sign-in`
 - Profile questionnaire: `/onboarding`
 - PDF upload: `POST /api/documents` (completed profile required)
+- Understanding: `GET /api/documents/:id/understanding` when status is `READY`
+
+## Phase 3 contents
+
+- `GeminiProvider` behind `AIProvider.analyzeDocument()`
+- Background processing of owned PDFs retrieved from storage
+- Versioned `DocumentUnderstanding` with page-grounded concepts
 
 ## Phase 2 contents
 

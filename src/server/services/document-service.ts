@@ -148,6 +148,9 @@ export async function uploadPdfForCurrentUser(input: {
       status: uploaded.status,
     });
 
+    const { enqueueDocumentProcessing } = await import("@/lib/jobs");
+    enqueueDocumentProcessing(uploaded.id, user.id);
+
     return toPublicDocument(uploaded);
   } catch (error) {
     await prisma.document.update({

@@ -8,6 +8,7 @@ testEnv.DATABASE_URL =
 testEnv.AUTH_SECRET = "test-auth-secret-must-be-at-least-32-chars";
 testEnv.AUTH_RATE_LIMIT_PER_MINUTE = "1000";
 testEnv.UPLOAD_RATE_LIMIT_PER_HOUR = "1000";
+testEnv.AI_RATE_LIMIT_PER_MINUTE = "1000";
 testEnv.STORAGE_PROVIDER = "local";
 testEnv.DIRECT_URL = testEnv.DATABASE_URL;
 
