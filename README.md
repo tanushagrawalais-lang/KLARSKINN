@@ -2,7 +2,7 @@
 
 Premium AI learning companion: upload academic material, wait until the system has a versioned, page-grounded understanding of it, then request a personalized explanation.
 
-This repository is on **Phase 4** (personalized grounded explanations). Companion UI is not implemented yet.
+This repository is on **Phase 5** (companion UI wired to existing APIs).
 
 Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
@@ -24,14 +24,23 @@ npm run dev
 
 The app listens on [http://127.0.0.1:43147](http://127.0.0.1:43147).
 
-- Health: `GET /api/health`
-- Register: `/sign-up` or `POST /api/auth/register`
-- Sign in: `/sign-in` or `POST /api/auth/sign-in`
-- Profile questionnaire: `/onboarding`
-- PDF upload: `POST /api/documents` (completed profile required)
-- Understanding: `GET /api/documents/:id/understanding` when status is `READY`
-- Intent options: `GET /api/documents/:id/intent-options`
-- Explanation: `POST /api/explanations`, `GET /api/explanations/:id`
+Demo flow in the UI:
+
+1. Create an account or sign in (`/sign-up`, `/sign-in`)
+2. Complete the learning profile (`/onboarding`)
+3. Upload a PDF in the companion (`/companion`)
+4. Wait until understanding is `READY`
+5. Choose an intent (or write a custom request)
+6. Read the personalized explanation with source page references
+
+Upload limits match the backend: PDF only, 20 MB max, 50 pages max.
+
+## Phase 5 contents
+
+- Stitch-style editorial UI for the demo flow above
+- Real calls to existing auth, profile, document, intent, and explanation APIs
+- Processing is polled from `GET /api/documents/:id` (no simulated upload)
+- `stitch-export.html` in this repo was empty, so the visual system is reconstructed from KLARSINN product copy and a Stitch-like paper/forest/gold treatment
 
 ## Phase 4 contents
 
@@ -69,4 +78,4 @@ The app listens on [http://127.0.0.1:43147](http://127.0.0.1:43147).
 - Argon2id password hashing
 - Database-backed httpOnly sessions
 - Learner profile API and completion gate
-- Minimal sign-up, sign-in, and onboarding route shells
+- Sign-up, sign-in, and onboarding routes

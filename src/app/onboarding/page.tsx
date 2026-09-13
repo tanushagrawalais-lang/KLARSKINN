@@ -1,91 +1,35 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { OnboardingForm } from "@/components/onboarding/onboarding-form";
+import { BrandMark } from "@/components/brand";
+import { readSessionToken } from "@/lib/auth/cookies";
+import { getSessionUser } from "@/server/services/auth-service";
 
-export default function OnboardingPage() {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    const form = new FormData(event.currentTarget);
-    const interests = form.getAll("interests");
-    const learningPreferences = form.getAll("learningPreferences");
-    const response = await fetch("/api/profile", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        explanationStyle: form.get("explanationStyle"),
-        detailPreference: form.get("detailPreference"),
-        learningPreferences,
-        interests,
-      }),
-    });
-    const payload = (await response.json()) as { error?: { message: string } };
-    if (!response.ok) {
-      setError(payload.error?.message ?? "Could not save profile");
-      return;
-    }
-    router.push("/companion");
-    router.refresh();
+export default async function OnboardingPage() {
+  const user = await getSessionUser(await readSessionToken());
+  if (!user) {
+    redirect("/sign-in");
+  }
+  if (user.profileCompleted) {
+    redirect("/companion");
   }
 
   return (
-    <main>
-      <h1>Learning profile</h1>
-      <form onSubmit={onSubmit}>
-        <label>
-          Explanation style
-          <select name="explanationStyle" defaultValue="structured" required>
-            <option value="concise">Concise</option>
-            <option value="structured">Structured</option>
-            <option value="conversational">Conversational</option>
-            <option value="socratic">Socratic</option>
-          </select>
-        </label>
-        <label>
-          Detail
-          <select name="detailPreference" defaultValue="standard" required>
-            <option value="brief">Brief</option>
-            <option value="standard">Standard</option>
-            <option value="thorough">Thorough</option>
-          </select>
-        </label>
-        <fieldset>
-          <legend>How you learn</legend>
-          <label>
-            <input type="checkbox" name="learningPreferences" value="text" defaultChecked />
-            Text
-          </label>
-          <label>
-            <input type="checkbox" name="learningPreferences" value="diagram-descriptions" />
-            Diagram descriptions
-          </label>
-          <label>
-            <input type="checkbox" name="learningPreferences" value="worked-examples" />
-            Worked examples
-          </label>
-        </fieldset>
-        <fieldset>
-          <legend>Interests (optional analogies)</legend>
-          <label>
-            <input type="checkbox" name="interests" value="motorsports" />
-            Motorsports
-          </label>
-          <label>
-            <input type="checkbox" name="interests" value="music" />
-            Music
-          </label>
-          <label>
-            <input type="checkbox" name="interests" value="gaming" />
-            Gaming
-          </label>
-        </fieldset>
-        <button type="submit">Save profile</button>
-      </form>
-      {error ? <p>{error}</p> : null}
-    </main>
+    <div className="min-h-screen">
+      <header className="px-6 py-6 lg:px-12">
+        <BrandMark href="/" />
+      </header>
+      <main className="mx-auto max-w-3xl px-6 pb-20">
+        <p className="text-xs uppercase tracking-[0.28em] text-gold">Learning profile</p>
+        <h1 className="mt-3 font-serif text-4xl text-forest">Tell the companion how to teach you</h1>
+        <p className="mt-3 max-w-2xl text-ink-soft">
+          These answers personalize explanations of your own PDFs. They do not unlock quizzes,
+          flashcards, or chat.
+        </p>
+        <div className="mt-10">
+          <OnboardingForm />
+        </div>
+      </main>
+    </div>
   );
 }

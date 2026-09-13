@@ -1,7 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), ui-serif, Georgia, "Times New Roman", serif;
+  --color-paper: #f3eee4;
+  --color-paper-2: #e8e0d1;
+  --color-paper-3: #faf7f1;
+  --color-ink: #1a1814;
+  --color-ink-soft: #5b564c;
+  --color-forest: #1b3a30;
+  --color-forest-deep: #10241e;
+  --color-gold: #c4a35a;
+  --color-gold-soft: #ead9a8;
+  --color-clay: #b45745;
+  --color-moss: #3d6b54;
+  --shadow-lift: 0 18px 50px -24px rgb(16 36 30 / 0.45);
+}
+
 html,
 body {
   margin: 0;
-  padding: 1.5rem;
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  line-height: 1.5;
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at 12% -10%, rgb(196 163 90 / 0.16), transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, rgb(27 58 48 / 0.08), transparent 50%),
+    var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-gold-soft);
+  color: var(--color-ink);
+}
+
+.material-symbol {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  font-family: "Material Symbols Outlined", sans-serif;
+  font-style: normal;
+  font-weight: 400;
+  display: inline-block;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
 }

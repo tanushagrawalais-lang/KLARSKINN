@@ -1,54 +1,24 @@
-"use client";
+import Link from "next/link";
 
-import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { SignUpForm } from "@/components/auth/sign-up-form";
+import { BrandMark } from "@/components/brand";
 
 export default function SignUpPage() {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: form.get("email"),
-        password: form.get("password"),
-      }),
-    });
-    const payload = (await response.json()) as { error?: { message: string } };
-    if (!response.ok) {
-      setError(payload.error?.message ?? "Registration failed");
-      return;
-    }
-    router.push("/onboarding");
-    router.refresh();
-  }
-
   return (
-    <main>
-      <h1>Create account</h1>
-      <form onSubmit={onSubmit}>
-        <label>
-          Email
-          <input name="email" type="email" autoComplete="email" required />
-        </label>
-        <label>
-          Password
-          <input
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            minLength={12}
-            required
-          />
-        </label>
-        <button type="submit">Register</button>
-      </form>
-      {error ? <p>{error}</p> : null}
-    </main>
+    <div className="flex min-h-screen flex-col">
+      <header className="px-6 py-6 lg:px-12">
+        <BrandMark />
+      </header>
+      <main className="flex flex-1 items-start justify-center px-6 py-10">
+        <div className="w-full">
+          <SignUpForm />
+          <p className="mx-auto mt-6 max-w-md text-center text-sm text-ink-soft">
+            <Link href="/" className="underline decoration-gold/70 underline-offset-4">
+              Back to KLARSINN
+            </Link>
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }

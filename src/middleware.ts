@@ -19,7 +19,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (session && AUTH_PAGES.has(pathname)) {
-    return NextResponse.redirect(new URL("/onboarding", request.url));
+    return NextResponse.redirect(new URL("/companion", request.url));
   }
 
   return NextResponse.next();

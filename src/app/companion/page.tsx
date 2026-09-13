@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 
+import { CompanionStudio } from "@/components/companion/companion-studio";
 import { readSessionToken } from "@/lib/auth/cookies";
 import { getSessionUser } from "@/server/services/auth-service";
 
-export default async function CompanionPlaceholderPage() {
+export default async function CompanionPage() {
   const user = await getSessionUser(await readSessionToken());
   if (!user) {
     redirect("/sign-in");
@@ -12,10 +13,5 @@ export default async function CompanionPlaceholderPage() {
     redirect("/onboarding");
   }
 
-  return (
-    <main>
-      <h1>Companion</h1>
-      <p>The learning companion is not available in Phase 1.</p>
-    </main>
-  );
+  return <CompanionStudio email={user.email} />;
 }
