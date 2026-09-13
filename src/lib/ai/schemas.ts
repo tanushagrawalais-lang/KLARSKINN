@@ -83,22 +83,24 @@ export const generateIntentOptionsResultSchema: z.ZodType<GenerateIntentOptionsR
         targetConceptName: z.string().optional(),
         targetSection: z.string().optional(),
       }),
-    ),
+    ).min(1),
   });
 
 export const generateExplanationResultSchema: z.ZodType<GenerateExplanationResult> = z.object({
   content: z.string().min(1),
   personalizationNote: z.string().min(1),
   usedInterest: z.string().optional(),
-  claims: z.array(
-    z.object({
-      claimText: z.string().min(1),
-      grounding: groundingKindSchema,
-      sourceExcerpt: z.string().optional(),
-      pageNumber: z.number().int().positive().optional(),
-      conceptName: z.string().optional(),
-    }),
-  ),
+  claims: z
+    .array(
+      z.object({
+        claimText: z.string().min(1),
+        grounding: groundingKindSchema,
+        sourceExcerpt: z.string().optional(),
+        pageNumber: z.number().int().positive().optional(),
+        conceptName: z.string().optional(),
+      }),
+    )
+    .min(1),
   conceptsUsed: z.array(z.string()),
 });
 
@@ -119,4 +121,36 @@ export function parseAnalyzeDocumentResult(
     ...parsed.data,
     schemaVersion,
   };
+}
+
+export function parseGenerateIntentOptionsResult(value: unknown): GenerateIntentOptionsResult {
+  const parsed = generateIntentOptionsResultSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error("INVALID_MODEL_OUTPUT");
+  }
+  return parsed.data;
+}
+
+export function parseGenerateExplanationResult(value: unknown): GenerateExplanationResult {
+  const parsed = generateExplanationResultSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error("INVALID_MODEL_OUTPUT");
+  }
+
+  const supportedMissingPage = parsed.data.claims.some(
+    (claim) => claim.grounding === "supported" && claim.pageNumber === undefined,
+  );
+  if (supportedMissingPage) {
+    throw new Error("INVALID_MODEL_OUTPUT");
+  }
+
+  const hasAnalogy = parsed.data.claims.some((claim) => claim.grounding === "analogy");
+  if (parsed.data.usedInterest && !hasAnalogy) {
+    return {
+      ...parsed.data,
+      usedInterest: undefined,
+    };
+  }
+
+  return parsed.data;
 }

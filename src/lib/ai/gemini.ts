@@ -1,7 +1,11 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
 import { AIProviderError } from "@/lib/ai/errors";
-import { parseAnalyzeDocumentResult, parseJsonObject } from "@/lib/ai/schemas";
+import {
+  parseAnalyzeDocumentResult,
+  parseGenerateExplanationResult,
+  parseGenerateIntentOptionsResult,
+  parseJsonObject,
+} from "@/lib/ai/schemas";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import type {
   AIProvider,
   AnalyzeDocumentInput,
@@ -40,13 +44,32 @@ Rules:
 - Relations may include prerequisites/depends_on when useful.
 - Do not write a learner-facing explanation. This is structured understanding only.`;
 
-function notImplemented(): never {
-  throw new AIProviderError({
-    code: "not_implemented",
-    message: "This AI operation is not available yet",
-    retryable: false,
-  });
+const INTENT_INSTRUCTIONS = `You suggest what a learner might want to understand from structured document understanding.
+Return ONLY JSON: { "options": [{ "intentType": "explain_concept"|"explain_section"|"explain_whole"|"simplify"|"analogy"|"clarify_confusion"|"custom", "label": string, "prompt": string, "targetConceptName"?: string, "targetSection"?: string }] }
+Provide 3-6 concrete options grounded in the listed concepts/sections. Do not invent topics that are not present.`;
+
+const EXPLANATION_INSTRUCTIONS = `You write a learner-facing explanation for KLARSINN grounded ONLY in the provided structured document understanding.
+Return ONLY JSON:
+{
+  "content": string,
+  "personalizationNote": string,
+  "usedInterest": string (optional; omit unless an analogy truly helps),
+  "claims": [{
+    "claimText": string,
+    "grounding": "supported"|"explanatory_addition"|"analogy",
+    "sourceExcerpt": string (optional),
+    "pageNumber": number (required when grounding is supported),
+    "conceptName": string (optional)
+  }],
+  "conceptsUsed": string[]
 }
+Rules:
+- Style and detail follow the learner profile. Modalities may shape how you explain (e.g. worked example), not the facts.
+- Facts that come from the material MUST use grounding "supported" and a real pageNumber from the understanding.
+- Pedagogical glue uses "explanatory_addition". It must not be presented as lecture fact.
+- Analogies use "analogy". Include an interest-based analogy only if it clearly helps comprehension; otherwise omit usedInterest.
+- Never force an interest into the explanation.
+- Do not invent page numbers.`;
 
 function toProviderError(error: unknown): AIProviderError {
   if (error instanceof AIProviderError) {
@@ -83,6 +106,27 @@ export class GeminiProvider implements AIProvider {
     this.generateJson = params.generateJson;
   }
 
+  private async generateParsed<T>(prompt: string, parse: (value: unknown) => T, pdfBase64?: string): Promise<T> {
+    try {
+      const raw = await this.generateJson(prompt, pdfBase64);
+      return parse(parseJsonObject(raw));
+    } catch (error) {
+      const first = toProviderError(error);
+      if (first.code !== "invalid_output") {
+        throw first;
+      }
+      try {
+        const repaired = await this.generateJson(
+          `${prompt}\nYour previous JSON was invalid. Return valid JSON only.`,
+          pdfBase64,
+        );
+        return parse(parseJsonObject(repaired));
+      } catch (retryError) {
+        throw toProviderError(retryError);
+      }
+    }
+  }
+
   async analyzeDocument(input: AnalyzeDocumentInput): Promise<AnalyzeDocumentResult> {
     const prompt = [
       ANALYSIS_INSTRUCTIONS,
@@ -95,39 +139,33 @@ export class GeminiProvider implements AIProvider {
     ].join("\n");
 
     const pdfBase64 = input.source ? Buffer.from(input.source.bytes).toString("base64") : undefined;
-
-    try {
-      const raw = await this.generateJson(prompt, pdfBase64);
-      return parseAnalyzeDocumentResult(parseJsonObject(raw), input.schemaVersion);
-    } catch (error) {
-      const first = toProviderError(error);
-      if (first.code !== "invalid_output") {
-        throw first;
-      }
-      try {
-        const repaired = await this.generateJson(
-          `${prompt}\nYour previous JSON was invalid. Return valid JSON only.`,
-          pdfBase64,
-        );
-        return parseAnalyzeDocumentResult(parseJsonObject(repaired), input.schemaVersion);
-      } catch (retryError) {
-        throw toProviderError(retryError);
-      }
-    }
+    return this.generateParsed(
+      prompt,
+      (value) => parseAnalyzeDocumentResult(value, input.schemaVersion),
+      pdfBase64,
+    );
   }
 
   async generateIntentOptions(
     input: GenerateIntentOptionsInput,
   ): Promise<GenerateIntentOptionsResult> {
-    void input;
-    return notImplemented();
+    const prompt = [
+      INTENT_INSTRUCTIONS,
+      `documentTitle: ${input.documentTitle}`,
+      `concepts: ${JSON.stringify(input.concepts)}`,
+      `importantSections: ${JSON.stringify(input.importantSections)}`,
+    ].join("\n");
+    return this.generateParsed(prompt, parseGenerateIntentOptionsResult);
   }
 
-  async generateExplanation(
-    input: GenerateExplanationInput,
-  ): Promise<GenerateExplanationResult> {
-    void input;
-    return notImplemented();
+  async generateExplanation(input: GenerateExplanationInput): Promise<GenerateExplanationResult> {
+    const prompt = [
+      EXPLANATION_INSTRUCTIONS,
+      `intent: ${JSON.stringify(input.intent)}`,
+      `learnerProfile: ${JSON.stringify(input.profile)}`,
+      `documentUnderstanding: ${JSON.stringify(input.understanding)}`,
+    ].join("\n");
+    return this.generateParsed(prompt, parseGenerateExplanationResult);
   }
 }
 

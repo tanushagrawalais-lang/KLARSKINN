@@ -103,10 +103,74 @@ describe("GeminiProvider", () => {
     ).rejects.toBeInstanceOf(AIProviderError);
   });
 
-  it("does not implement explanation generation", async () => {
+  it("generates intent options from document understanding", async () => {
     const provider = new GeminiProvider({
       modelName: "gemini-2.0-flash",
-      generateJson: async () => JSON.stringify(validPayload),
+      generateJson: async () =>
+        JSON.stringify({
+          options: [
+            {
+              intentType: "explain_concept",
+              label: "Explain the derivative",
+              prompt: "Explain the derivative definition",
+              targetConceptName: "Derivative",
+            },
+          ],
+        }),
+    });
+    const result = await provider.generateIntentOptions({
+      documentTitle: "Lecture",
+      concepts: [{ name: "Derivative", kind: "definition", importance: 5 }],
+      importantSections: [{ heading: "Definition", excerpt: "slope of the tangent" }],
+    });
+    expect(result.options[0]?.intentType).toBe("explain_concept");
+  });
+
+  it("grounds supported claims and does not force an interest", async () => {
+    const provider = new GeminiProvider({
+      modelName: "gemini-2.0-flash",
+      generateJson: async () =>
+        JSON.stringify({
+          content: "The derivative is the slope of the tangent line.",
+          personalizationNote: "Used a structured style without an analogy.",
+          usedInterest: "motorsports",
+          claims: [
+            {
+              claimText: "The derivative is the slope of the tangent line.",
+              grounding: "supported",
+              pageNumber: 1,
+              sourceExcerpt: "the derivative is the slope of the tangent",
+              conceptName: "Derivative",
+            },
+          ],
+          conceptsUsed: ["Derivative"],
+        }),
+    });
+    const result = await provider.generateExplanation({
+      intent: { intentType: "explain_concept", prompt: "Explain derivative" },
+      profile: {
+        explanationStyle: "structured",
+        detailLevel: "standard",
+        modalities: ["text"],
+        interests: ["motorsports"],
+      },
+      understanding: parseAnalyzeDocumentResult(validPayload, "understanding.v1"),
+    });
+    expect(result.usedInterest).toBeUndefined();
+    expect(result.claims[0]?.grounding).toBe("supported");
+    expect(result.claims[0]?.pageNumber).toBe(1);
+  });
+
+  it("rejects supported claims without page references", async () => {
+    const provider = new GeminiProvider({
+      modelName: "gemini-2.0-flash",
+      generateJson: async () =>
+        JSON.stringify({
+          content: "A fact.",
+          personalizationNote: "none",
+          claims: [{ claimText: "A fact.", grounding: "supported" }],
+          conceptsUsed: [],
+        }),
     });
     await expect(
       provider.generateExplanation({
@@ -119,7 +183,7 @@ describe("GeminiProvider", () => {
         },
         understanding: parseAnalyzeDocumentResult(validPayload, "understanding.v1"),
       }),
-    ).rejects.toMatchObject({ code: "not_implemented" });
+    ).rejects.toBeInstanceOf(AIProviderError);
   });
 });
 

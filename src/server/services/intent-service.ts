@@ -1,2 +1,2 @@
-/** User intent capture. Implemented in Phase 4. */
-export const intentServicePhase = 4 as const;
+/** User intent is persisted when an explanation is generated. */
+export { getIntentOptionsForCurrentUser } from "@/server/services/explanation-service";

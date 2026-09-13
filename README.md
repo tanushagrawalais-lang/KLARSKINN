@@ -2,7 +2,7 @@
 
 Premium AI learning companion: upload academic material, wait until the system has a versioned, page-grounded understanding of it, then request a personalized explanation.
 
-This repository is on **Phase 3** (Gemini document understanding). Personalized explanations and companion UI are not implemented yet.
+This repository is on **Phase 4** (personalized grounded explanations). Companion UI is not implemented yet.
 
 Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
@@ -30,6 +30,14 @@ The app listens on [http://127.0.0.1:43147](http://127.0.0.1:43147).
 - Profile questionnaire: `/onboarding`
 - PDF upload: `POST /api/documents` (completed profile required)
 - Understanding: `GET /api/documents/:id/understanding` when status is `READY`
+- Intent options: `GET /api/documents/:id/intent-options`
+- Explanation: `POST /api/explanations`, `GET /api/explanations/:id`
+
+## Phase 4 contents
+
+- `generateIntentOptions()` and `generateExplanation()` on `GeminiProvider`
+- Explanations persist claims tagged supported / explanatory addition / analogy
+- Owner-scoped intent-options and explanation APIs
 
 ## Phase 3 contents
 
