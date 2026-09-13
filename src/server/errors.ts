@@ -68,6 +68,22 @@ export function conflict(message: string): AppError {
   });
 }
 
+export function payloadTooLarge(message = "File is too large"): AppError {
+  return new AppError({
+    code: "PAYLOAD_TOO_LARGE",
+    message,
+    status: 413,
+  });
+}
+
+export function unsupportedMediaType(message = "Unsupported file type"): AppError {
+  return new AppError({
+    code: "UNSUPPORTED_MEDIA_TYPE",
+    message,
+    status: 415,
+  });
+}
+
 export function tooManyRequests(retryAfterSeconds?: number): AppError {
   return new AppError({
     code: "RATE_LIMITED",

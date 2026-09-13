@@ -7,6 +7,9 @@ testEnv.DATABASE_URL =
   "postgresql://klarsinn:klarsinn@127.0.0.1:5432/klarsinn_test?schema=public";
 testEnv.AUTH_SECRET = "test-auth-secret-must-be-at-least-32-chars";
 testEnv.AUTH_RATE_LIMIT_PER_MINUTE = "1000";
+testEnv.UPLOAD_RATE_LIMIT_PER_HOUR = "1000";
+testEnv.STORAGE_PROVIDER = "local";
+testEnv.DIRECT_URL = testEnv.DATABASE_URL;
 
 const cookieStore = new Map<string, string>();
 

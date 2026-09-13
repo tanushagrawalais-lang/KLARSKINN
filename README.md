@@ -2,7 +2,7 @@
 
 Premium AI learning companion: upload academic material, wait until the system has a versioned, page-grounded understanding of it, then request a personalized explanation.
 
-This repository is on **Phase 1** (authentication + learner profile). Document processing, Gemini, and the companion experience are not implemented yet.
+This repository is on **Phase 2** (authenticated PDF upload to private Supabase Storage). Gemini, document understanding, and explanations are not implemented yet.
 
 Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
@@ -15,8 +15,8 @@ Requirements:
 
 ```bash
 cp .env.example .env
-# set AUTH_SECRET to a random 32+ character string
-# set DATABASE_URL to your Postgres database
+# set AUTH_SECRET, DATABASE_URL, DIRECT_URL
+# set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for PDF storage
 npm install
 npx prisma migrate dev
 npm run dev
@@ -28,6 +28,14 @@ The app listens on [http://127.0.0.1:43147](http://127.0.0.1:43147).
 - Register: `/sign-up` or `POST /api/auth/register`
 - Sign in: `/sign-in` or `POST /api/auth/sign-in`
 - Profile questionnaire: `/onboarding`
+- PDF upload: `POST /api/documents` (completed profile required)
+
+## Phase 2 contents
+
+- `StorageProvider` implemented with Supabase Storage (`study-materials`)
+- Authenticated PDF upload with size and page limits
+- Document metadata in PostgreSQL (`UPLOADED` / `VALIDATING` / `FAILED`)
+- Owner-scoped list, get, and delete APIs
 
 ## Scripts
 
