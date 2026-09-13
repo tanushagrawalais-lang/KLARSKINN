@@ -1,63 +1,46 @@
 # KLARSINN
 
-Premium AI learning companion.
+Premium AI learning companion: upload academic material, wait until the system has a versioned, page-grounded understanding of it, then request a personalized explanation.
 
-KLARSINN helps a learner upload academic material, wait until the system has a structured understanding of it, then request a concise, accurate, personalized explanation grounded in that material.
+This repository is on **Phase 0** (scaffold only). Authentication, Gemini, document processing, and product UI are not implemented yet.
 
-This repository is currently in the **architecture phase**. There is no application runtime yet.
+Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
-## Current repository state
+## Run locally
 
-Inspected on 2026-09-13:
+Requirements:
 
-| Area | Status |
+- Node.js 22+
+- PostgreSQL (needed for Prisma migrate in later phases; `/api/health` does not need a live database)
+
+```bash
+cp .env.example .env
+npm install
+npx prisma generate
+npm run dev
+```
+
+The app listens on [http://127.0.0.1:43147](http://127.0.0.1:43147).
+
+Health check: `GET /api/health`
+
+## Scripts
+
+| Script | Purpose |
 | --- | --- |
-| Framework | None (empty repository) |
-| Dependencies | None |
-| Database | None |
-| Authentication | None |
-| API routes | None |
-| Environment configuration | None |
-| UI / frontend | None |
+| `npm run dev` | Next.js dev server on port 43147 |
+| `npm run typecheck` | Strict `tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npx prisma generate` | Generate Prisma Client from `prisma/schema.prisma` |
 
-The only existing commit is the empty project initializer. Nothing working needs to be preserved.
+Do not run migrations until a PostgreSQL instance is available and Phase 1+ needs it.
 
-## Product scope
+## Phase 0 contents
 
-In scope:
-
-1. Secure account
-2. Lightweight learning-profile questionnaire
-3. Main AI companion interface
-4. Upload of academic study material
-5. Backend processing and structured understanding
-6. Intent capture (“what do you want to understand?”)
-7. Personalized explanation grounded in the uploaded material
-
-Out of scope:
-
-- calendars
-- assignment management
-- flashcards
-- social features
-- LMS functionality
-- generic productivity tools
-- unrelated AI agents
-
-## Architecture
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
-
-1. Proposed folder structure
-2. Architecture diagram
-3. Database entity model
-4. API endpoint list
-5. AI service interface
-6. Document-processing pipeline
-7. Authentication strategy
-8. Security model
-9. Background-job strategy
-10. Environment variables
-11. Implementation phases
-
-Implementation starts only after the next set of instructions.
+- Next.js App Router + strict TypeScript + ESLint
+- Prisma schema (users, sessions, profiles, documents, pages, versioned understandings, intents, explanations)
+- Zod environment validation
+- `AIProvider`, `StorageProvider`, and `JobQueue` interfaces
+- `LocalStorageProvider` and `InMemoryJobQueue` (not wired to upload/processing yet)
+- Structured logger and `AppError` primitives
+- Domain/service folder layout

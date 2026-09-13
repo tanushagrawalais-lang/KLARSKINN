@@ -1,18 +1,24 @@
 # KLARSINN backend architecture
 
-Status: design only. Do not treat this document as implemented code.
+Status: Phase 0 in progress after this document. Later phases are not started until instructed.
 
-Intended stack (greenfield; repository is empty):
+Intended stack:
 
-- TypeScript
+- TypeScript (strict)
 - Next.js (App Router)
 - PostgreSQL
 - Prisma ORM
-- Gemini API behind an `AIProvider` interface
-- NextAuth.js (Auth.js) with credentials + optional OAuth later
-- Object storage behind a `StorageProvider` interface
-- Zod for request and AI-output validation
-- In-process job queue first, with a replaceable `JobQueue` interface
+- Gemini API behind an `AIProvider` interface (not implemented in Phase 0)
+- Database-backed sessions, email/password only in v1
+- Local disk behind a `StorageProvider` interface (single concrete provider)
+- Zod for request, env, and AI-output validation
+- In-process `JobQueue` (replaceable without changing business logic)
+
+Product remains one flow:
+
+Academic material → deep understanding → user intent → personalized explanation
+
+Out of scope for all phases: quizzes, flashcards, calendars, assignment tracking, LMS, social features, generic productivity tools, unrelated AI agents.
 
 ---
 
@@ -25,66 +31,42 @@ Intended stack (greenfield; repository is empty):
 ├── package.json
 ├── next.config.ts
 ├── tsconfig.json
+├── eslint.config.mjs
 ├── .env.example
 ├── prisma/
-│   ├── schema.prisma
-│   └── migrations/
+│   └── schema.prisma
 ├── src/
 │   ├── app/
-│   │   ├── (auth)/
-│   │   │   ├── sign-in/
-│   │   │   └── sign-up/
-│   │   ├── (app)/
-│   │   │   ├── onboarding/          # learner profile questionnaire
-│   │   │   └── companion/           # main AI companion
 │   │   ├── api/
-│   │   │   ├── auth/[...nextauth]/
-│   │   │   ├── me/
-│   │   │   ├── profile/
-│   │   │   ├── documents/
-│   │   │   ├── intents/
-│   │   │   └── explanations/
+│   │   │   └── health/
+│   │   │       └── route.ts
 │   │   ├── layout.tsx
-│   │   └── page.tsx
-│   ├── components/                  # companion UI only
+│   │   └── page.tsx                 # placeholder only until UI phases
 │   ├── lib/
-│   │   ├── auth/
-│   │   │   ├── config.ts
-│   │   │   ├── password.ts
-│   │   │   └── session.ts
+│   │   ├── ai/
+│   │   │   ├── types.ts             # AIProvider + DTOs
+│   │   │   └── schemas.ts           # Zod (later phases)
+│   │   ├── auth/                    # Phase 1
 │   │   ├── db/
 │   │   │   └── prisma.ts
-│   │   ├── env.ts                   # Zod-parsed server env
-│   │   ├── logger.ts
-│   │   ├── rate-limit/
-│   │   │   ├── types.ts
-│   │   │   └── memory.ts
-│   │   ├── storage/
-│   │   │   ├── types.ts
-│   │   │   └── local.ts             # later: s3.ts
+│   │   ├── documents/               # Phase 2+
+│   │   ├── env.ts
+│   │   ├── explanations/            # Phase 4
 │   │   ├── jobs/
 │   │   │   ├── types.ts
-│   │   │   ├── memory.ts
-│   │   │   └── handlers/
-│   │   │       └── process-document.ts
-│   │   ├── documents/
-│   │   │   ├── upload.ts
-│   │   │   ├── validate.ts
-│   │   │   └── extract.ts           # text/pages; not explanation
-│   │   ├── ai/
+│   │   │   └── memory.ts            # InMemoryJobQueue only
+│   │   ├── logger.ts
+│   │   ├── storage/
 │   │   │   ├── types.ts
-│   │   │   ├── schemas.ts           # Zod schemas for model JSON
-│   │   │   ├── provider.ts          # AIProvider interface
-│   │   │   ├── gemini.ts
-│   │   │   └── index.ts             # factory from env
-│   │   └── explanations/
-│   │       └── grounding.ts
+│   │   │   └── local.ts             # LocalStorageProvider only
+│   │   └── rate-limit/              # Phase 5
 │   └── server/
-│       ├── authz.ts                 # ownership checks
+│       ├── authz.ts                 # ownership → 404 (used from Phase 1)
 │       ├── errors.ts
-│       └── services/
+│       └── services/                # domain services; implemented in later phases
 │           ├── profile-service.ts
 │           ├── document-service.ts
+│           ├── understanding-service.ts
 │           ├── intent-service.ts
 │           └── explanation-service.ts
 └── uploads/                         # local storage; gitignored
@@ -92,9 +74,10 @@ Intended stack (greenfield; repository is empty):
 
 Rules:
 
-- Client components never import `lib/ai`, `lib/storage`, Prisma, or env secrets.
-- Route handlers are thin: parse → authorize → call a service.
-- Gemini SDK lives only in `lib/ai/gemini.ts`.
+- Client code never imports `lib/ai`, `lib/storage`, Prisma, or env secrets.
+- Route handlers stay thin: parse → authorize → service.
+- All Gemini/SDK calls stay inside a future `GeminiProvider` module. Application code depends on `AIProvider` only.
+- Do not add extra storage backends or queue backends in this repo until required.
 
 ---
 
@@ -105,53 +88,83 @@ Browser
   │  HTTPS
   ▼
 Next.js App Router
-  ├── Pages: sign-in / sign-up / onboarding / companion
-  └── Route handlers (auth required except public auth routes)
-        │
-        ├── Auth.js session cookie (httpOnly, secure, sameSite)
-        ├── Zod request validation
-        ├── Rate limiter (AI + upload endpoints)
-        └── Domain services
-              │
+  └── Route handlers
+        ├── session cookie (httpOnly, secure, sameSite)   [Phase 1]
+        ├── Zod validation
+        ├── rate limiter (AI + upload)                    [Phase 5]
+        └── domain services
               ├── Prisma ──────────────► PostgreSQL
-              ├── StorageProvider ─────► local disk / later object store
-              ├── JobQueue ────────────► process-document worker
-              └── AIProvider ──────────► Gemini (replaceable)
+              ├── StorageProvider ─────► LocalStorageProvider (disk)
+              ├── JobQueue ────────────► InMemoryJobQueue
+              └── AIProvider ──────────► GeminiProvider [Phase 3+]
 
-Document pipeline (async; not the explanation):
+Upload / understand (async; never generates the explanation):
 
-  UPLOAD → VALIDATE → STORE → EXTRACT → UNDERSTAND → STRUCTURE → PERSIST → READY
+  UPLOAD → VALIDATE → STORE → EXTRACT (pages)
+        → UNDERSTAND (versioned) → STRUCTURE → PERSIST → READY
 
-Explanation path (separate request, after READY):
+Provenance:
 
-  USER INTENT
-    + LEARNER PROFILE
-    + STRUCTURED DOCUMENT UNDERSTANDING
-    ────────────────────────────────────► generateExplanation()
-                                          grounded, cited, personalized
+  Document → DocumentPage → SourceSpan → Concept
+                                       → ExplanationClaim
+
+Explanation (separate HTTP request, document READY):
+
+  USER INTENT + LEARNER PROFILE + DocumentUnderstanding (active version)
+        → generateExplanation()
 ```
 
-Separation of concerns:
+HTTP upload returns quickly with `{ documentId, status }`.
 
-```text
-HTTP request (upload)
-  must return quickly with documentId + status=UPLOADED|VALIDATING|PROCESSING
-
-HTTP request (explain)
-  only allowed when document.status = READY
-  never re-runs full document understanding unless the document changed
-```
+HTTP explain is allowed only when the document has a READY understanding. It does not re-run full understanding unless a new version is explicitly processed.
 
 ---
 
 ## 3. Database entity model
 
-### Principles
+### Modeling rules
 
-- One user owns all learning data. No sharing tables.
-- Document understanding is relational, not a single giant summary blob.
-- JSON is used only for genuinely variable payloads (e.g. model usage metadata, modality lists).
-- Explanations store both rendered text and structured grounding so claims can be audited.
+Relational tables for:
+
+- authorization and ownership
+- lifecycle (documents, understandings, sessions)
+- relationships between concepts
+- page-level source references
+- queryable concepts and claims
+
+JSON fields for:
+
+- variable AI extras (section lists, relation lists if not queried independently, model usage)
+- questionnaire lists (`modalities`)
+- claim/concept metadata that is not worth its own table
+
+Do **not** create a table per AI output field. No separate tables for confusion notes, formula latex, visual descriptions, or similar.
+
+Do **not** add Auth.js `Account` / `VerificationToken` tables until Google OAuth is actually required.
+
+### Provenance (required)
+
+The system must answer: **which page(s) of the uploaded document support this concept or claim?**
+
+```text
+Document
+  └── DocumentPage          (extracted page text / optional page image ref)
+        └── SourceSpan      (excerpt on that page)
+              ├── ConceptSourceSpan → Concept
+              └── ExplanationClaim
+```
+
+### Understanding versions (required)
+
+Each AI structured understanding is a `DocumentUnderstanding` row:
+
+- `documentId`
+- `schemaVersion` (prompt/schema contract, e.g. `understanding.v1`)
+- `modelProvider`, `modelName`
+- `status` (`PROCESSING` | `READY` | `FAILED`)
+- `createdAt` (and `completedAt` when finished)
+
+A document may have multiple understanding rows over time. `Document.activeUnderstandingId` points at the version the companion should use. Failed or superseded versions remain for audit.
 
 ### Entities
 
@@ -159,31 +172,29 @@ HTTP request (explain)
 User
   id                    String   @id @default(cuid())
   email                 String   @unique
-  emailVerifiedAt       DateTime?
-  passwordHash          String?            # null if future OAuth-only
+  passwordHash          String
   name                  String?
   createdAt             DateTime
   updatedAt             DateTime
   lastSignedInAt        DateTime?
-  deletedAt             DateTime?          # soft delete
+  deletedAt             DateTime?
 
-Account                    # Auth.js OAuth adapter (unused until OAuth enabled)
-  id, userId, provider, providerAccountId, ...
-
-Session                    # database sessions (Auth.js)
-  id, sessionToken, userId, expires
-
-VerificationToken          # Auth.js
+Session
+  id                    String   @id
+  sessionToken          String   @unique
+  userId                String
+  expiresAt             DateTime
+  createdAt             DateTime
 
 LearnerProfile
   id                    String   @id
   userId                String   @unique
-  explanationStyle      ExplanationStyle   # concise | structured | conversational | socratic
-  detailLevel           DetailLevel        # brief | standard | thorough
-  modalities            Json               # string[] e.g. ["text","diagram-descriptions","worked-examples"]
-  interests             String[]           # or related table if we need labels later
-  subjectContext        String?            # course / subject if provided
-  additionalNotes       String?            # short free text from questionnaire
+  explanationStyle      ExplanationStyle
+  detailLevel           DetailLevel
+  modalities            Json                 # string[]
+  interests             String[]
+  subjectContext        String?
+  additionalNotes       String?
   completedAt           DateTime?
   createdAt             DateTime
   updatedAt             DateTime
@@ -196,249 +207,183 @@ Document
   mimeType              String
   byteSize              Int
   pageCount             Int?
-  documentType          DocumentType       # pdf | text | markdown | image
-  storageKey            String             # opaque storage reference, not a public URL
-  status                DocumentStatus     # UPLOADED | VALIDATING | PROCESSING | READY | FAILED
+  documentType          DocumentType
+  storageKey            String               # opaque; not a public URL
+  status                DocumentStatus       # upload pipeline
+  activeUnderstandingId String?              # FK to DocumentUnderstanding
   processingStartedAt   DateTime?
   processingFinishedAt  DateTime?
-  failureCode           String?            # machine-stable, not raw stack
-  failureMessage        String?            # safe user-facing
-  contentHash           String?            # optional dedupe per user
+  failureCode           String?
+  failureMessage        String?              # safe, user-facing
+  contentHash           String?
   createdAt             DateTime
   updatedAt             DateTime
 
-DocumentAsset              # extracted pages / images, not the explanation
-  id, documentId
-  kind                  AssetKind          # page-text | page-image | figure
-  pageNumber            Int?
-  storageKey            String?
-  textContent           String?            # extracted text for that page/region
-  sortOrder             Int
+DocumentPage
+  id                    String   @id
+  documentId            String
+  pageNumber            Int                  # 1-based
+  textContent           String?              # extracted text for this page
+  storageKey            String?              # optional rendered page / figure blob
+  metadata              Json?                # variable extract hints only
+  @@unique(documentId, pageNumber)
+
+DocumentUnderstanding
+  id                    String   @id
+  documentId            String
+  schemaVersion         String               # e.g. understanding.v1
+  modelProvider         String
+  modelName             String
+  status                UnderstandingStatus
+  failureCode           String?
+  modelMetadata         Json?                # tokens, latency; never raw doc text
+  structuredExtras      Json?                # importantSections, relations[]
+  createdAt             DateTime
+  completedAt           DateTime?
 
 Concept
-  id, documentId
+  id                    String   @id
+  understandingId       String
+  documentId            String               # denormalized for ownership queries
   name                  String
-  kind                  ConceptKind        # concept | definition | formula | example | section | visual | confusion
+  kind                  ConceptKind
   summary               String
-  importance            Int                # 1–5
-  pageStart             Int?
-  pageEnd               Int?
-  sourceExcerpt         String?            # short quote from material
-  confusionNote         String?            # potential confusion point
+  importance            Int                  # 1–5
   sortOrder             Int
+  metadata              Json?                # confusionNote, formula, visual notes
 
-ConceptRelation
-  id, documentId
-  fromConceptId         String
-  toConceptId           String
-  relationType          RelationType       # defines | depends-on | example-of | contrasts | part-of | related
-  note                  String?
+ConceptSourceSpan
+  conceptId             String
+  sourceSpanId          String
+  @@id(conceptId, sourceSpanId)
 
-SourceSpan                 # reusable citation unit
-  id, documentId
-  pageNumber            Int?
+SourceSpan
+  id                    String   @id
+  documentId            String
+  pageId                String               # DocumentPage
   heading               String?
-  excerpt               String             # short, stored for grounding
+  excerpt               String
   startOffset           Int?
   endOffset             Int?
 
-ConceptSource
-  conceptId, sourceSpanId
-
 UserIntent
-  id
-  userId
-  documentId
+  id                    String   @id
+  userId                String
+  documentId            String
+  understandingId       String               # version the user acted on
   intentType            IntentType
-    # explain-concept | explain-section | explain-whole
-    # simplify | analogy | clarify-confusion | custom
-  prompt                String             # user-specified request
+  prompt                String
   targetConceptId       String?
   targetSection         String?
   createdAt             DateTime
 
 Explanation
-  id
-  userId
-  documentId
+  id                    String   @id
+  userId                String
+  documentId            String
+  understandingId       String
   intentId              String
-  content               String             # final learner-facing explanation
-  personalizationNote   String?            # how profile was used (or "none")
-  usedInterest          String?            # which interest, if any
+  content               String
+  personalizationNote   String?              # or "none"
+  usedInterest          String?
+  conceptsUsed          Json                 # string[] concept ids/names
   modelProvider         String
   modelName             String
-  modelMetadata         Json               # tokens, latency; never raw prompts with PII dump
+  modelMetadata         Json?
   createdAt             DateTime
 
-ExplanationClaim           # grounding rows
-  id, explanationId
+ExplanationClaim
+  id                    String   @id
+  explanationId         String
   claimText             String
-  grounding             GroundingKind      # supported | explanatory-addition | analogy
+  grounding             GroundingKind        # supported | explanatory_addition | analogy
   conceptId             String?
-  sourceSpanId          String?
-
-ExplanationConcept         # concepts used
-  explanationId, conceptId
+  sourceSpanId          String?              # → page via SourceSpan.pageId
 ```
+
+Page support query:
+
+```text
+Concept pages:
+  Concept → ConceptSourceSpan → SourceSpan → DocumentPage.pageNumber
+
+Claim pages:
+  ExplanationClaim → SourceSpan → DocumentPage.pageNumber
+```
+
+`supported` claims SHOULD carry a `sourceSpanId` when the material has pages. Persistence in later phases rejects `grounding=supported` with neither span nor page.
 
 ### Enums
 
 ```text
-ExplanationStyle   concise | structured | conversational | socratic
-DetailLevel        brief | standard | thorough
-DocumentType       pdf | text | markdown | image
-DocumentStatus     UPLOADED | VALIDATING | PROCESSING | READY | FAILED
-AssetKind          page-text | page-image | figure
-ConceptKind        concept | definition | formula | example | section | visual | confusion
-RelationType       defines | depends_on | example_of | contrasts | part_of | related
-IntentType         explain_concept | explain_section | explain_whole | simplify | analogy | clarify_confusion | custom
-GroundingKind      supported | explanatory_addition | analogy
+ExplanationStyle      concise | structured | conversational | socratic
+DetailLevel           brief | standard | thorough
+DocumentType          pdf | text | markdown | image
+DocumentStatus        UPLOADED | VALIDATING | PROCESSING | READY | FAILED
+UnderstandingStatus   PROCESSING | READY | FAILED
+ConceptKind           concept | definition | formula | example | section | visual | confusion
+IntentType            explain_concept | explain_section | explain_whole | simplify | analogy | clarify_confusion | custom
+GroundingKind         supported | explanatory_addition | analogy
 ```
 
-### Indexes and constraints
+Concept-to-concept relations live in `DocumentUnderstanding.structuredExtras.relations` (JSON). They are not a first-class query surface in v1.
 
+### Indexes
+
+- `Session(userId)`
 - `Document(userId, createdAt)`
 - `Document(userId, status)`
-- `Concept(documentId, sortOrder)`
+- `DocumentPage(documentId, pageNumber)` unique
+- `DocumentUnderstanding(documentId, createdAt)`
+- `Concept(understandingId, sortOrder)`
+- `SourceSpan(pageId)`
 - `UserIntent(userId, documentId, createdAt)`
 - `Explanation(userId, documentId, createdAt)`
-- Foreign keys with `onDelete: Cascade` for user-owned trees
-- Unique `(fromConceptId, toConceptId, relationType)` optional
 
-`LearnerProfile.interests` starts as `String[]`. If interest taxonomy grows, extract `Interest` + join table in a later phase. Do not over-normalize the questionnaire now.
+Foreign keys cascade with the owning document/user tree.
 
 ---
 
 ## 4. API endpoint list
 
-All `/api/*` except auth sign-in/sign-up and health are session-authenticated.
+`GET /api/health` is public.
 
-Authorization: the resource’s `userId` must equal the session user. Missing and non-owned IDs both return `404` (no enumeration).
+All other `/api/*` require a valid session (Phase 1+).
+
+For every user-owned resource:
+
+1. Verify session
+2. Load the resource scoped to `session.userId`
+3. If missing **or** not owned → **404** (no existence oracle)
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/health` | Liveness; no secrets |
-| `POST` | `/api/auth/sign-up` | Create account (email + password) |
-| `POST` | `/api/auth/[...nextauth]` | Auth.js handlers (sign-in, sign-out, session) |
-| `GET` | `/api/me` | Current user + profile completion flag |
+| `POST` | `/api/auth/sign-up` | Create account (Phase 1) |
+| `POST` | `/api/auth/sign-in` | Create session (Phase 1) |
+| `POST` | `/api/auth/sign-out` | Destroy session (Phase 1) |
+| `GET` | `/api/me` | Current user + profile completion |
 | `GET` | `/api/profile` | Learner profile |
-| `PUT` | `/api/profile` | Create/update profile (questionnaire) |
-| `POST` | `/api/documents` | Upload (multipart). Validates type/size. Stores. Enqueues processing. Returns `{ id, status }` |
-| `GET` | `/api/documents` | List current user’s documents (id, title, status, timestamps; no storage keys) |
-| `GET` | `/api/documents/:id` | Document metadata + status + safe failure message |
-| `GET` | `/api/documents/:id/understanding` | Structured understanding when `READY`; else `409` |
-| `DELETE` | `/api/documents/:id` | Soft-delete or hard-delete + storage cleanup |
-| `GET` | `/api/documents/:id/intent-options` | Suggested intents from understanding (`generateIntentOptions`) |
-| `POST` | `/api/intents` | Persist user intent for a READY document |
-| `POST` | `/api/explanations` | Generate + persist explanation from intent + profile + understanding |
-| `GET` | `/api/explanations/:id` | Fetch one explanation (owner only) |
-| `GET` | `/api/documents/:id/explanations` | List explanations for a document |
+| `PUT` | `/api/profile` | Questionnaire upsert |
+| `POST` | `/api/documents` | Upload; enqueue processing; `{ id, status }` |
+| `GET` | `/api/documents` | Current user’s documents |
+| `GET` | `/api/documents/:id` | Metadata + pipeline status |
+| `GET` | `/api/documents/:id/pages` | Page index (numbers, not full private text to logs) |
+| `GET` | `/api/documents/:id/understanding` | Active understanding when READY; else 409 |
+| `DELETE` | `/api/documents/:id` | Delete + storage cleanup |
+| `GET` | `/api/documents/:id/intent-options` | `generateIntentOptions()` |
+| `POST` | `/api/intents` | Persist intent against a READY understanding |
+| `POST` | `/api/explanations` | Generate + persist explanation |
+| `GET` | `/api/explanations/:id` | Owner only |
+| `GET` | `/api/documents/:id/explanations` | List for a document |
 
-Request/response contracts (Zod):
-
-**POST `/api/documents`**
-
-- Input: file, optional title
-- Output: `{ id, status, title, createdAt }`
-- Errors: `415` unsupported type, `413` too large, `401`
-
-**POST `/api/explanations`**
-
-- Input: `{ intentId }` or `{ documentId, intentType, prompt, targetConceptId? }`
-- Output: `{ id, content, claims[], conceptsUsed[], personalizationNote, createdAt }`
-- Errors: `409` document not READY, `429` rate limited, `404`
-
-No public file-serving URLs for originals. If the UI needs a filename, it comes from metadata.
+No public URLs for original files. Storage keys never leave the server.
 
 ---
 
 ## 5. AI service interface
 
 ```ts
-// lib/ai/types.ts
-
-export type AnalyzeDocumentInput = {
-  documentId: string;
-  title: string;
-  pages: Array<{
-    pageNumber: number;
-    text: string;
-    hasVisual?: boolean;
-  }>;
-};
-
-export type AnalyzeDocumentResult = {
-  concepts: Array<{
-    name: string;
-    kind: ConceptKind;
-    summary: string;
-    importance: number; // 1-5
-    pageStart?: number;
-    pageEnd?: number;
-    sourceExcerpt?: string;
-    confusionNote?: string;
-  }>;
-  relations: Array<{
-    fromName: string;
-    toName: string;
-    relationType: RelationType;
-    note?: string;
-  }>;
-  importantSections: Array<{
-    heading?: string;
-    pageNumber?: number;
-    excerpt: string;
-    whyItMatters: string;
-  }>;
-};
-
-export type GenerateIntentOptionsInput = {
-  documentTitle: string;
-  concepts: Array<{ name: string; kind: ConceptKind; importance: number }>;
-  importantSections: Array<{ heading?: string; excerpt: string }>;
-};
-
-export type GenerateIntentOptionsResult = {
-  options: Array<{
-    intentType: IntentType;
-    label: string;
-    prompt: string;
-    targetConceptName?: string;
-    targetSection?: string;
-  }>;
-};
-
-export type GroundingKind = "supported" | "explanatory_addition" | "analogy";
-
-export type GenerateExplanationInput = {
-  intent: {
-    intentType: IntentType;
-    prompt: string;
-  };
-  profile: {
-    explanationStyle: ExplanationStyle;
-    detailLevel: DetailLevel;
-    modalities: string[];
-    interests: string[];
-    subjectContext?: string;
-  };
-  understanding: AnalyzeDocumentResult;
-};
-
-export type GenerateExplanationResult = {
-  content: string;
-  personalizationNote: string; // "none" if profile style-only
-  usedInterest?: string;
-  claims: Array<{
-    claimText: string;
-    grounding: GroundingKind;
-    sourceExcerpt?: string;
-    pageNumber?: number;
-    conceptName?: string;
-  }>;
-  conceptsUsed: string[];
-};
-
 export interface AIProvider {
   readonly id: string;
   readonly modelName: string;
@@ -448,130 +393,83 @@ export interface AIProvider {
 }
 ```
 
+`analyzeDocument` input is **page-addressable**: each page has `pageNumber` and extracted `text`. Output concepts/spans must include `pageNumber` (and excerpt) so persistence can attach `SourceSpan.pageId`.
+
+`generateExplanation` claims include `grounding` plus optional `pageNumber` / `sourceExcerpt`.
+
 Provider wiring:
 
 ```text
-createAIProvider(env) → GeminiProvider | (future)
-
-GeminiProvider
-  - uses @google/generative-ai (or official SDK current at implementation time)
-  - responseMimeType JSON
-  - validates with Zod schemas in lib/ai/schemas.ts
-  - retries transient 429/5xx with bounded backoff
-  - maps validation failure to a typed AIError (retryable | invalid_output | upstream)
+createAIProvider(env) → GeminiProvider   # only implementation planned
+Application services talk to AIProvider, never to the Gemini SDK.
 ```
 
-Grounding rules encoded in the explanation schema and prompt:
+Gemini-specific SDK, prompts, and JSON MIME mode stay in `GeminiProvider` (Phase 3). Not implemented in Phase 0.
 
-1. `supported` — claim must include a source excerpt/page when available
-2. `explanatory_addition` — pedagogical glue, labeled in stored claims
-3. `analogy` — optional; only if it improves comprehension; never as a source fact
+Grounding:
 
-The model must not emit a claim as `supported` without a source pointer. Persistence rejects that shape.
+1. `supported` — from the uploaded pages; store span → page
+2. `explanatory_addition` — pedagogy, not lecture fact
+3. `analogy` — optional; only if it helps; never as source fact
 
-Personalization rules:
-
-- Style and detail always apply
-- Interests apply only when the provider sets `usedInterest` and `grounding: analogy` (or an explicit analogy sentence)
-- Forcing an analogy on every explanation is a bug
+Personalization affects style and optional analogy, never factual content. Do not force an analogy into every explanation.
 
 ---
 
 ## 6. Document-processing pipeline
 
-### States
+### Document statuses
 
 ```text
-UPLOADED     file accepted, metadata row exists, object stored
-VALIDATING   MIME, size, page limits, basic parse
-PROCESSING   extract + AI analyze + structure persist
-READY        understanding rows committed
-FAILED       failureCode + safe failureMessage; original retained for retry
+UPLOADED     metadata + object stored
+VALIDATING   type, size, page limits
+PROCESSING   extract pages + AI understand + persist
+READY        active DocumentUnderstanding is READY
+FAILED       failureCode + safe message; original retained
+```
+
+### Understanding statuses
+
+```text
+PROCESSING   this schemaVersion/model run is in flight
+READY        concepts + spans committed
+FAILED       this version failed; document may remain FAILED
 ```
 
 ### Stages
 
 ```text
-1. UPLOAD (HTTP)
-   - Authn
-   - Rate limit
-   - Multipart parse
-   - Create Document status=UPLOADED
-   - Write bytes via StorageProvider
-   - Enqueue job { type: "process-document", documentId, userId }
-   - Return 202-equivalent JSON immediately
-
-2. VALIDATE (worker)
-   - status=VALIDATING
-   - Allowlist: application/pdf, text/plain, text/markdown, image/png, image/jpeg
-   - Max size: 20 MB (env)
-   - Max pages: 50 (env) for v1
-   - Reject encrypted/unreadable PDFs with failureCode=UNREADABLE
-
-3. EXTRACT
-   - PDF → page text (+ page count)
-   - Images → later vision path in GeminiProvider.analyzeDocument
-   - Persist DocumentAsset rows
-   - Do not call generateExplanation
-
-4. UNDERSTAND
-   - AIProvider.analyzeDocument(pages)
-   - Zod-parse output
-   - Retry invalid JSON once with a repair prompt; then FAILED INVALID_MODEL_OUTPUT
-
-5. STRUCTURE + PERSIST
-   - Transaction:
-       delete previous understanding for document (if retry)
-       insert Concept, ConceptRelation, SourceSpan, ConceptSource
-       set pageCount, status=READY, processingFinishedAt
-   - On error: status=FAILED, processingFinishedAt, failureCode
-
-6. READY FOR USER
-   - Companion UI polls GET /api/documents/:id
-   - When READY, fetch understanding + intent-options
+1. UPLOAD (HTTP) — store via StorageProvider, enqueue JobQueue, return immediately
+2. VALIDATE — MIME allowlist, MAX_UPLOAD_BYTES, MAX_UPLOAD_PAGES
+3. EXTRACT — one DocumentPage per page; never call generateExplanation
+4. UNDERSTAND — insert DocumentUnderstanding (schemaVersion, model, PROCESSING)
+                AIProvider.analyzeDocument(pages)
+                Zod-validate
+5. STRUCTURE + PERSIST — SourceSpan (pageId), Concept, ConceptSourceSpan
+                         structuredExtras JSON for sections/relations
+                         understanding READY; document.activeUnderstandingId; document READY
+6. READY FOR USER — poll document; then intent + explanation
 ```
 
-Timing: the upload HTTP handler must not wait for Gemini. Processing duration is logged on the worker (`documentId`, `durationMs`, `status`), never file bytes.
+Retries: bounded attempts for 429/5xx/timeouts. Invalid model JSON: one repair attempt, then understanding FAILED.
 
-Retries:
-
-- Worker: 3 attempts for retryable errors (timeout, 429, 5xx)
-- Non-retryable: unsupported type, oversize, empty extract
-- User-triggered reprocess: `POST /api/documents/:id/reprocess` can be added in phase 3 if needed; not required for the first slice
+Worker logs `documentId`, `understandingId`, `durationMs`, `status` — never file bytes or full page text.
 
 ---
 
 ## 7. Authentication strategy
 
-**Choice:** Auth.js (NextAuth v5) with **Credentials** (email + password) as the v1 path, using **database sessions** in PostgreSQL.
+v1: **email + password** and **database `Session` rows**.
 
-Why:
+- Password hashed with argon2 (or bcrypt if argon2 is impractical)
+- Session cookie: httpOnly, secure in production, sameSite=lax
+- Revocation = delete session row (no JWT-only v1)
+- Sign-up / sign-in / sign-out only — no unused OAuth adapter, no `Account` table
+- Google OAuth may be added later; it is not built now
 
-- Server-side session cookie, not a client-held API key
-- Adapter tables align with Prisma
-- OAuth (`Account`) can be enabled later without changing User/LearnerProfile
+Companion and document APIs (Phase 1+): valid session. Completed profile required except `/api/me` and `/api/profile` (`403 PROFILE_INCOMPLETE`).
 
-Password handling:
-
-- Argon2id or bcrypt (prefer argon2) via `lib/auth/password.ts`
-- Never log email+password together; never log password or hash
-- Generic sign-in error: “Invalid email or password”
-- Sign-up: email normalize (trim, lowercase), password min length 12, Zod
-
-Session:
-
-- `httpOnly`, `secure` in production, `sameSite=lax`
-- Server `auth()` in every protected route and server component
-- JWT-only sessions are not used for v1 so revocation is a row delete
-
-Account lifecycle:
-
-- Create: sign-up → session → redirect onboarding if no `LearnerProfile.completedAt`
-- Update: email change deferred; password change later
-- Delete: `deletedAt`; cascade or anonymize learning data in a dedicated service method
-- Sign-out: destroy session row
-
-Companion and document APIs require both a valid session and a completed profile (`403 PROFILE_INCOMPLETE`) except `GET/PUT /api/profile` and `GET /api/me`.
+Auth is **not** implemented in Phase 0.
 
 ---
 
@@ -579,32 +477,22 @@ Companion and document APIs require both a valid session and a completed profile
 
 | Control | Approach |
 | --- | --- |
-| Authentication | Session required on protected routes |
-| Authorization | Load by `id` **and** `userId`; else 404 |
-| IDOR | No sequential public IDs (cuid); no existence oracle |
-| API keys | `GEMINI_API_KEY` only on server; parsed in `lib/env.ts` |
-| Client secrets | None in `NEXT_PUBLIC_*` except harmless public app URL |
-| Validation | Zod on all bodies; file type from sniff + MIME, not extension alone |
-| Upload size | Enforced before full buffer when possible; hard cap in env |
-| Storage | Opaque keys; no directory listing; files not under `/public` |
-| Errors | Typed `AppError`; no stack traces to client |
-| Logging | `requestId`, `userId`, `documentId`, `durationMs`, error code — not contents, not profile interests dumps, not keys |
-| AI rate limit | Per-user token bucket on `/api/explanations` and analyze jobs |
-| Upload rate limit | Per-user cap (e.g. 10/hour) |
-| CSRF | Same-site cookie + Auth.js defaults; mutations from same origin |
-| Multi-tenancy | Strict userId scoping; no shared documents |
-
-Treat uploads and profiles as private academic data. Background jobs receive `userId` and re-check ownership before processing.
+| Authentication | Database session on protected routes (Phase 1) |
+| Authorization | Session + ownership; else 404 |
+| IDOR | cuid ids; no enumeration |
+| API keys | Server env only (`GEMINI_API_KEY` later) |
+| Validation | Zod; upload type sniff + MIME allowlist |
+| Upload limits | `MAX_UPLOAD_BYTES`, `MAX_UPLOAD_PAGES` |
+| Storage | Opaque keys; files not under `/public` |
+| Errors | `AppError`; no stacks to clients |
+| Logging | ids, durations, error codes — not passwords, keys, document contents, or profile dumps |
+| Rate limit | Abstraction on AI + upload (Phase 5) |
 
 ---
 
 ## 9. Background-job strategy
 
-**Interface first**, in-process implementation for the hackathon slice.
-
 ```ts
-export type JobName = "process-document";
-
 export type ProcessDocumentJob = {
   name: "process-document";
   documentId: string;
@@ -613,136 +501,107 @@ export type ProcessDocumentJob = {
 
 export interface JobQueue {
   enqueue(job: ProcessDocumentJob): Promise<void>;
-  start(): void; // worker loop
+  start(): void;
 }
 ```
 
-**v1 `InMemoryJobQueue`**
+Hackathon: **`InMemoryJobQueue` only**. No Redis, BullMQ, or extra brokers.
 
-- Async FIFO in the Next.js server process
-- Bounded concurrency (1–2 document jobs)
-- Persist status in PostgreSQL so UI does not depend on in-memory job state
-- On process restart: a boot reconcilersets `PROCESSING`/`VALIDATING` older than N minutes back to retry or FAILED, and re-enqueues `UPLOADED` rows
+- FIFO in the Next.js server process
+- Bounded concurrency from env
+- Document/understanding **status lives in PostgreSQL**
+- Boot reconciler (later phase) resets stuck `PROCESSING`/`VALIDATING` rows
 
-**Later replacement (same interface)**
+Replacement later: new `JobQueue` implementation + factory. Services keep calling `enqueue`.
 
-- pg-boss, or a dedicated worker process, or a cloud queue
-- No call sites change except `createJobQueue(env)`
-
-The HTTP thread never calls `analyzeDocument` directly.
+HTTP never calls `analyzeDocument` on the request thread.
 
 ---
 
 ## 10. Environment variables
 
-Server-only (Zod in `lib/env.ts`). `.env.example` lists names, not values.
+Validated with Zod in `src/lib/env.ts`. `.env.example` documents names.
+
+Phase 0 requires values needed to boot the app. Auth and Gemini secrets become required when those phases land.
 
 ```text
-# App
-NODE_ENV                  development | production | test
-APP_URL                   http://localhost:43147
+NODE_ENV                    development | production | test
+APP_URL                     http://127.0.0.1:43147
+DATABASE_URL                postgresql://...
 
-# Database
-DATABASE_URL              postgresql://...
+# Phase 1
+AUTH_SECRET                 optional until auth is implemented
 
-# Auth
-AUTH_SECRET               random 32+ bytes
-AUTH_URL                  same as APP_URL for v1
+# Phase 3
+AI_PROVIDER                 gemini
+GEMINI_API_KEY              optional until Gemini is implemented
+GEMINI_MODEL                optional until Gemini is implemented
 
-# AI
-AI_PROVIDER               gemini
-GEMINI_API_KEY            server-only
-GEMINI_MODEL              e.g. gemini-2.0-flash
-                  # exact model string chosen at implementation time
+STORAGE_PROVIDER            local
+LOCAL_STORAGE_DIR           ./uploads
 
-# Storage
-STORAGE_PROVIDER          local
-LOCAL_STORAGE_DIR         ./uploads
-# later:
-# S3_BUCKET
-# S3_REGION
-# S3_ACCESS_KEY_ID
-# S3_SECRET_ACCESS_KEY
+MAX_UPLOAD_BYTES            20971520
+MAX_UPLOAD_PAGES            50
+UNDERSTANDING_SCHEMA_VERSION understanding.v1
 
-# Uploads
-MAX_UPLOAD_BYTES          20971520
-MAX_UPLOAD_PAGES          50
+DOCUMENT_JOB_CONCURRENCY    1
+DOCUMENT_JOB_MAX_ATTEMPTS   3
 
-# Jobs
-DOCUMENT_JOB_CONCURRENCY  1
-DOCUMENT_JOB_MAX_ATTEMPTS 3
-
-# Rate limits
-AI_RATE_LIMIT_PER_MINUTE  6
-UPLOAD_RATE_LIMIT_PER_HOUR 10
+AI_RATE_LIMIT_PER_MINUTE    6
+UPLOAD_RATE_LIMIT_PER_HOUR  10
 ```
 
-Never expose `GEMINI_API_KEY`, `AUTH_SECRET`, `DATABASE_URL`, or storage credentials to the client.
+No `NEXT_PUBLIC_` secrets. Do not list unused S3 credentials until a second storage provider exists.
 
 ---
 
 ## 11. Implementation phases
 
-Do not start these until instructed.
+### Phase 0 — Scaffold (this implementation slice)
 
-### Phase 0 — Scaffold
-
-- Next.js + TypeScript + Tailwind + shadcn/ui
-- Prisma + PostgreSQL schema from section 3
-- `lib/env.ts`, logger, error types
-- `.env.example`, README run instructions
+- Next.js App Router + TypeScript + ESLint (strict)
+- Prisma configured with the schema in section 3
+- Zod env validation
+- Domain/service folder structure
+- Prisma client connection module
+- `AIProvider`, `StorageProvider`, `JobQueue` interfaces
+- `LocalStorageProvider` and `InMemoryJobQueue` as the sole concrete classes (no processing yet)
+- Structured logger
+- API error primitives
+- `GET /api/health`
+- `.env.example` + README
+- No authentication, no Gemini, no document processing, no product UI screens
 
 ### Phase 1 — Auth + profile
 
-- Sign-up / sign-in / session
+- Sign-up / sign-in / sign-out + database sessions
 - Learner-profile questionnaire
-- Gate companion behind completed profile
-- Auth failure logging (no secrets)
+- Ownership 404 helper on protected resources
 
 ### Phase 2 — Documents + storage + jobs
 
-- Upload API, validation, local storage
-- Status machine
-- Extract text/pages
-- Worker loop
-- Companion upload + status UI (empty, processing, failed, ready)
+- Upload API, `LocalStorageProvider` usage, `DocumentPage` extract
+- Status machine + in-process worker
+- No explanation generation
 
-### Phase 3 — Understanding persistence + AI provider
+### Phase 3 — Understanding + GeminiProvider
 
-- `AIProvider` + `GeminiProvider`
-- `analyzeDocument` + Zod schemas
-- Persist concepts/relations/spans
-- `GET understanding` + intent options
+- `GeminiProvider` behind `AIProvider`
+- Versioned `DocumentUnderstanding`
+- Persist concepts + page-level `SourceSpan`s
 
 ### Phase 4 — Intent + explanation
 
 - Intent API
-- `generateExplanation` with grounding + personalization rules
-- Persist Explanation + claims
-- Companion: ask intent → show explanation with source/grounding distinction
+- `generateExplanation` with grounding + personalization
+- Claims linked to spans/pages
 
 ### Phase 5 — Hardening
 
-- Rate limits
-- Retry/reconciliation
-- Upload abuse checks
-- Structured logs for AI duration/failures
-- Delete document + storage cleanup
-
-Out of scope for all phases: calendars, assignments, flashcards, social, LMS, extra agents.
+- Rate limits, retry/reconcile, delete/cleanup, AI duration logs
 
 ---
 
 ## Inspection record
 
-| Question | Finding |
-| --- | --- |
-| Current framework | None |
-| Existing dependencies | None |
-| Existing database | None |
-| Existing authentication | None |
-| Existing API routes | None |
-| Existing environment configuration | None |
-| Existing UI/frontend | None |
-
-Greenfield. The design above is the source of truth until implementation is requested.
+Inspected 2026-09-13: empty repository (initializer commit only), then architecture-only commit. Phase 0 is the first application code.

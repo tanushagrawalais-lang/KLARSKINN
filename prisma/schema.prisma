@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ExplanationStyle {
+  concise
+  structured
+  conversational
+  socratic
+}
+
+enum DetailLevel {
+  brief
+  standard
+  thorough
+}
+
+enum DocumentType {
+  pdf
+  text
+  markdown
+  image
+}
+
+enum DocumentStatus {
+  UPLOADED
+  VALIDATING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum UnderstandingStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ConceptKind {
+  concept
+  definition
+  formula
+  example
+  section
+  visual
+  confusion
+}
+
+enum IntentType {
+  explain_concept
+  explain_section
+  explain_whole
+  simplify
+  analogy
+  clarify_confusion
+  custom
+}
+
+enum GroundingKind {
+  supported
+  explanatory_addition
+  analogy
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  name           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastSignedInAt DateTime?
+  deletedAt      DateTime?
+
+  sessions      Session[]
+  profile       LearnerProfile?
+  documents     Document[]
+  intents       UserIntent[]
+  explanations  Explanation[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model LearnerProfile {
+  id                String           @id @default(cuid())
+  userId            String           @unique
+  explanationStyle  ExplanationStyle
+  detailLevel       DetailLevel
+  modalities        Json
+  interests         String[]
+  subjectContext    String?
+  additionalNotes   String?
+  completedAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id                    String         @id @default(cuid())
+  userId                String
+  title                 String
+  originalFilename      String
+  mimeType              String
+  byteSize              Int
+  pageCount             Int?
+  documentType          DocumentType
+  storageKey            String
+  status                DocumentStatus
+  activeUnderstandingId String?        @unique
+  processingStartedAt   DateTime?
+  processingFinishedAt  DateTime?
+  failureCode           String?
+  failureMessage        String?
+  contentHash           String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeUnderstanding DocumentUnderstanding?  @relation("ActiveUnderstanding", fields: [activeUnderstandingId], references: [id], onDelete: SetNull)
+  pages               DocumentPage[]
+  understandings      DocumentUnderstanding[] @relation("DocumentUnderstandings")
+  sourceSpans         SourceSpan[]
+  concepts            Concept[]
+  intents             UserIntent[]
+  explanations        Explanation[]
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+}
+
+model DocumentPage {
+  id          String  @id @default(cuid())
+  documentId  String
+  pageNumber  Int
+  textContent String?
+  storageKey  String?
+  metadata    Json?
+
+  document    Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sourceSpans SourceSpan[]
+
+  @@unique([documentId, pageNumber])
+}
+
+model DocumentUnderstanding {
+  id               String               @id @default(cuid())
+  documentId       String
+  schemaVersion    String
+  modelProvider    String
+  modelName        String
+  status           UnderstandingStatus
+  failureCode      String?
+  modelMetadata    Json?
+  structuredExtras Json?
+  createdAt        DateTime             @default(now())
+  completedAt      DateTime?
+
+  document     Document      @relation("DocumentUnderstandings", fields: [documentId], references: [id], onDelete: Cascade)
+  activeFor    Document?     @relation("ActiveUnderstanding")
+  concepts     Concept[]
+  intents      UserIntent[]
+  explanations Explanation[]
+
+  @@index([documentId, createdAt])
+}
+
+model Concept {
+  id              String      @id @default(cuid())
+  understandingId String
+  documentId      String
+  name            String
+  kind            ConceptKind
+  summary         String
+  importance      Int
+  sortOrder       Int
+  metadata        Json?
+
+  understanding DocumentUnderstanding @relation(fields: [understandingId], references: [id], onDelete: Cascade)
+  document      Document              @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sourceSpans   ConceptSourceSpan[]
+  claims        ExplanationClaim[]
+  intents       UserIntent[]
+
+  @@index([understandingId, sortOrder])
+}
+
+model SourceSpan {
+  id          String  @id @default(cuid())
+  documentId  String
+  pageId      String
+  heading     String?
+  excerpt     String
+  startOffset Int?
+  endOffset   Int?
+
+  document   Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  page       DocumentPage        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  concepts   ConceptSourceSpan[]
+  claims     ExplanationClaim[]
+
+  @@index([pageId])
+  @@index([documentId])
+}
+
+model ConceptSourceSpan {
+  conceptId    String
+  sourceSpanId String
+
+  concept    Concept    @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  sourceSpan SourceSpan @relation(fields: [sourceSpanId], references: [id], onDelete: Cascade)
+
+  @@id([conceptId, sourceSpanId])
+}
+
+model UserIntent {
+  id              String     @id @default(cuid())
+  userId          String
+  documentId      String
+  understandingId String
+  intentType      IntentType
+  prompt          String
+  targetConceptId String?
+  targetSection   String?
+  createdAt       DateTime   @default(now())
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document      Document             @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  understanding DocumentUnderstanding @relation(fields: [understandingId], references: [id], onDelete: Cascade)
+  targetConcept Concept?             @relation(fields: [targetConceptId], references: [id], onDelete: SetNull)
+  explanations  Explanation[]
+
+  @@index([userId, documentId, createdAt])
+}
+
+model Explanation {
+  id                  String   @id @default(cuid())
+  userId              String
+  documentId          String
+  understandingId     String
+  intentId            String
+  content             String
+  personalizationNote String?
+  usedInterest        String?
+  conceptsUsed        Json
+  modelProvider       String
+  modelName           String
+  modelMetadata       Json?
+  createdAt           DateTime @default(now())
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document      Document              @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  understanding DocumentUnderstanding @relation(fields: [understandingId], references: [id], onDelete: Cascade)
+  intent        UserIntent            @relation(fields: [intentId], references: [id], onDelete: Cascade)
+  claims        ExplanationClaim[]
+
+  @@index([userId, documentId, createdAt])
+}
+
+model ExplanationClaim {
+  id            String        @id @default(cuid())
+  explanationId String
+  claimText     String
+  grounding     GroundingKind
+  conceptId     String?
+  sourceSpanId  String?
+
+  explanation Explanation @relation(fields: [explanationId], references: [id], onDelete: Cascade)
+  concept     Concept?    @relation(fields: [conceptId], references: [id], onDelete: SetNull)
+  sourceSpan  SourceSpan? @relation(fields: [sourceSpanId], references: [id], onDelete: SetNull)
+
+  @@index([explanationId])
+}
