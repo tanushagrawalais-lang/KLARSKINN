@@ -46,23 +46,17 @@ export async function registerAccount(input: unknown, rateSubject: string) {
   const passwordHash = await hashPassword(parsed.data.password);
 
   try {
-    const user = await prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          email: parsed.data.email,
-          passwordHash,
+    const user = await prisma.user.create({
+      data: {
+        email: parsed.data.email,
+        passwordHash,
+        profile: {
+          create: {
+            modalities: [],
+            interests: [],
+          },
         },
-      });
-
-      await tx.learnerProfile.create({
-        data: {
-          userId: created.id,
-          modalities: [],
-          interests: [],
-        },
-      });
-
-      return created;
+      },
     });
 
     const session = await createSession(user.id);
