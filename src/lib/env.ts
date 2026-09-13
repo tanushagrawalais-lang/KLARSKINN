@@ -11,6 +11,8 @@ const envSchema = z.object({
     .min(1)
     .default("postgresql://klarsinn:klarsinn@127.0.0.1:5432/klarsinn?schema=public"),
   AUTH_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
+  AUTH_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
   AI_PROVIDER: z.enum(["gemini"]).default("gemini"),
   GEMINI_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   GEMINI_MODEL: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
@@ -28,6 +30,10 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 let cached: Env | undefined;
+
+export function resetEnvCache(): void {
+  cached = undefined;
+}
 
 export function getEnv(): Env {
   if (cached) {

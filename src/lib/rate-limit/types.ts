@@ -1,6 +1,6 @@
 export type RateLimitKey = {
   name: string;
-  userId: string;
+  subject: string;
 };
 
 export interface RateLimiter {

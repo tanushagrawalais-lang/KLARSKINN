@@ -2,7 +2,7 @@
 
 Premium AI learning companion: upload academic material, wait until the system has a versioned, page-grounded understanding of it, then request a personalized explanation.
 
-This repository is on **Phase 0** (scaffold only). Authentication, Gemini, document processing, and product UI are not implemented yet.
+This repository is on **Phase 1** (authentication + learner profile). Document processing, Gemini, and the companion experience are not implemented yet.
 
 Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
@@ -11,18 +11,23 @@ Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 Requirements:
 
 - Node.js 22+
-- PostgreSQL (needed for Prisma migrate in later phases; `/api/health` does not need a live database)
+- PostgreSQL
 
 ```bash
 cp .env.example .env
+# set AUTH_SECRET to a random 32+ character string
+# set DATABASE_URL to your Postgres database
 npm install
-npx prisma generate
+npx prisma migrate dev
 npm run dev
 ```
 
 The app listens on [http://127.0.0.1:43147](http://127.0.0.1:43147).
 
-Health check: `GET /api/health`
+- Health: `GET /api/health`
+- Register: `/sign-up` or `POST /api/auth/register`
+- Sign in: `/sign-in` or `POST /api/auth/sign-in`
+- Profile questionnaire: `/onboarding`
 
 ## Scripts
 
@@ -31,16 +36,14 @@ Health check: `GET /api/health`
 | `npm run dev` | Next.js dev server on port 43147 |
 | `npm run typecheck` | Strict `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npx prisma generate` | Generate Prisma Client from `prisma/schema.prisma` |
+| `npm test` | Vitest |
+| `npx prisma migrate dev` | Apply schema migrations locally |
+| `npx prisma generate` | Generate Prisma Client |
 
-Do not run migrations until a PostgreSQL instance is available and Phase 1+ needs it.
+## Phase 1 contents
 
-## Phase 0 contents
-
-- Next.js App Router + strict TypeScript + ESLint
-- Prisma schema (users, sessions, profiles, documents, pages, versioned understandings, intents, explanations)
-- Zod environment validation
-- `AIProvider`, `StorageProvider`, and `JobQueue` interfaces
-- `LocalStorageProvider` and `InMemoryJobQueue` (not wired to upload/processing yet)
-- Structured logger and `AppError` primitives
-- Domain/service folder layout
+- Email/password registration and login
+- Argon2id password hashing
+- Database-backed httpOnly sessions
+- Learner profile API and completion gate
+- Minimal sign-up, sign-in, and onboarding route shells

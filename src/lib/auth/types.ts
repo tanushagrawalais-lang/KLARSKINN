@@ -1,2 +1,2 @@
-/** Database-backed sessions. Implemented in Phase 1. */
-export const AUTH_PHASE = 1 as const;
+/** Authentication helpers live in ./password, ./session, ./cookies, and ./schemas. */
+export { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
