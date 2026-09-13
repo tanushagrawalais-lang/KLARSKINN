@@ -29,6 +29,7 @@ const envSchema = z.object({
   DOCUMENT_JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   AI_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(6),
   UPLOAD_RATE_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(10),
+  DEMO_MODE: z.preprocess((value) => value === "true" || value === true, z.boolean()).default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;

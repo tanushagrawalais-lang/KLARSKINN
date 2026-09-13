@@ -4,6 +4,7 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { credentialsSchema, loginSchema } from "@/lib/auth/schemas";
 import { createSession, deleteSession, findValidSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { ensureDemoUser } from "@/lib/auth/demo";
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { MemoryRateLimiter } from "@/lib/rate-limit/memory";
@@ -121,18 +122,20 @@ export async function endSession(sessionToken: string | undefined): Promise<void
 export async function getSessionUser(
   sessionToken: string | undefined,
 ): Promise<SessionUser | null> {
-  if (!sessionToken) {
-    return null;
+  if (sessionToken) {
+    const session = await findValidSession(sessionToken);
+    if (session) {
+      return {
+        id: session.user.id,
+        email: session.user.email,
+        profileCompleted: Boolean(session.user.profile?.completedAt),
+      };
+    }
   }
 
-  const session = await findValidSession(sessionToken);
-  if (!session) {
-    return null;
+  if (getEnv().DEMO_MODE) {
+    return ensureDemoUser();
   }
 
-  return {
-    id: session.user.id,
-    email: session.user.email,
-    profileCompleted: Boolean(session.user.profile?.completedAt),
-  };
+  return null;
 }
